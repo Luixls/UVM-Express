@@ -11,6 +11,8 @@ import quoteRoutes from './routes/quote.routes.js';
 import shipmentRoutes from './routes/shipment.routes.js';
 import { seedAdmin } from './seed/admin.seed.js';
 import { seedCities } from './seed/cities.seed.js';
+import trackingRoutes from './routes/tracking.routes.js';
+import adminRoutes from './routes/admin.routes.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -31,6 +33,8 @@ app.get('/api/health', (_req, res) => res.json({ ok: true, service: 'uvm-express
 app.use('/api/auth', authRoutes);
 app.use('/api/quote', quoteRoutes);
 app.use('/api/shipments', shipmentRoutes);
+app.use('/api/tracking', trackingRoutes);
+app.use('/api/admin', adminRoutes);
 
 (async () => {
   try {
