@@ -45,7 +45,7 @@ app.use('/api/status-catalog', statusRoutes);
 (async () => {
   try {
     await sequelize.authenticate();
-    await sequelize.sync();
+    await sequelize.sync({ alter: true });
     console.log('MySQL conectado correctamente.');
 
     await seedAdmin();
@@ -55,5 +55,12 @@ app.use('/api/status-catalog', statusRoutes);
     console.error('Error al conectar MySQL:', err?.message || err);
   }
 })();
+
+app.use((err, req, res, _next) => {
+  const status = err.status || 500;
+  const message = err.message || 'Error interno del servidor';
+  console.error('[ERROR]', message, err?.stack || '');
+  res.status(status).json({ ok: false, error: message });
+});
 
 export default app;
