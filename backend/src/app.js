@@ -13,6 +13,7 @@ import { seedAdmin } from './seed/admin.seed.js';
 import { seedCities } from './seed/cities.seed.js';
 import trackingRoutes from './routes/tracking.routes.js';
 import adminRoutes from './routes/admin.routes.js';
+import cityRoutes from './routes/city.routes.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -35,6 +36,7 @@ app.use('/api/quote', quoteRoutes);
 app.use('/api/shipments', shipmentRoutes);
 app.use('/api/tracking', trackingRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/cities', cityRoutes);
 
 (async () => {
   try {
