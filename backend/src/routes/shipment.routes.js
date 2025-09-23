@@ -3,11 +3,12 @@ import { Router } from 'express';
 import { body } from 'express-validator';
 import { createShipment } from '../controllers/shipmentController.js';
 import { listMyShipments } from '../controllers/shipmentListController.js';
+import { listPayments, createPayment } from '../controllers/paymentController.js';
 import { requireAuth } from '../middlewares/auth.js';
 
 const r = Router();
 
-// Crear envío
+// Crear envío (ya existente)
 r.post(
   '/',
   [
@@ -20,8 +21,18 @@ r.post(
   createShipment
 );
 
-// Listar envíos del usuario autenticado
-// Query opcionales: ?q=texto&status=IN_TRANSIT&limit=20&offset=0
+// Listado del usuario (ya existente)
 r.get('/mine', requireAuth, listMyShipments);
+
+// Pagos del envío (ver)
+r.get('/:tracking/payments', requireAuth, listPayments);
+
+// Crear pago/abono
+r.post(
+  '/:tracking/payments',
+  [ body('amount').isFloat({ gt: 0 }) ],
+  requireAuth,
+  createPayment
+);
 
 export default r;
