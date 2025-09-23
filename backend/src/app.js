@@ -11,9 +11,12 @@ import quoteRoutes from './routes/quote.routes.js';
 import shipmentRoutes from './routes/shipment.routes.js';
 import { seedAdmin } from './seed/admin.seed.js';
 import { seedCities } from './seed/cities.seed.js';
+import { seedStatusCatalog } from './seed/statusCatalog.seed.js';
 import trackingRoutes from './routes/tracking.routes.js';
 import adminRoutes from './routes/admin.routes.js';
 import cityRoutes from './routes/city.routes.js';
+import statusRoutes from './routes/status.routes.js';
+
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -37,6 +40,7 @@ app.use('/api/shipments', shipmentRoutes);
 app.use('/api/tracking', trackingRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/cities', cityRoutes);
+app.use('/api/status-catalog', statusRoutes);
 
 (async () => {
   try {
@@ -46,6 +50,7 @@ app.use('/api/cities', cityRoutes);
 
     await seedAdmin();
     await seedCities();
+    await seedStatusCatalog(); // <-- NUEVO
   } catch (err) {
     console.error('Error al conectar MySQL:', err?.message || err);
   }
