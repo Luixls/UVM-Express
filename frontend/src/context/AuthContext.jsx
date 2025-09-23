@@ -2,23 +2,22 @@
 import { createContext, useContext, useEffect, useState } from 'react'
 import { api, setAuthToken } from '../api/axios'
 
-const AuthCtx = createContext()
-export const useAuth = () => useContext(AuthCtx)
+const AuthCtx = createContext(null)
+
+export function useAuth() {
+  return useContext(AuthCtx)
+}
 
 export default function AuthProvider({ children }) {
   const [user, setUser] = useState(null)
   const [loading, setLoading] = useState(true)
 
-  // Al cargar la app, verifica si hay token guardado
   useEffect(() => {
     const token = localStorage.getItem('token')
     if (token) setAuthToken(token)
 
-    (async () => {
-      if (!token) {
-        setLoading(false)
-        return
-      }
+    ;(async () => {
+      if (!token) { setLoading(false); return }
       try {
         const { data } = await api.get('/auth/me')
         setUser(data.user)
@@ -31,7 +30,6 @@ export default function AuthProvider({ children }) {
     })()
   }, [])
 
-  // funciones expuestas
   const login = async (email, password) => {
     const { data } = await api.post('/auth/login', { email, password })
     localStorage.setItem('token', data.token)
