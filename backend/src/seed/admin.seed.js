@@ -2,8 +2,11 @@
 import { User } from '../models/index.js';
 
 /**
- * Crea un usuario admin si no existe (idempotente).
- * Toma datos de variables de entorno.
+ * Crea/asegura un usuario admin (idempotente) usando variables de entorno.
+ * Logs:
+ *  - warn si faltan variables
+ *  - log si ya existe
+ *  - log si se crea o si se actualiza el rol a admin
  */
 export const seedAdmin = async () => {
   const email = process.env.ADMIN_EMAIL;
@@ -28,7 +31,6 @@ export const seedAdmin = async () => {
     return;
   }
 
-  // Crear admin nuevo
   const admin = await User.create({
     rol: 'admin',
     nombre,
