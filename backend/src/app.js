@@ -16,6 +16,7 @@ import trackingRoutes from './routes/tracking.routes.js';
 import adminRoutes from './routes/admin.routes.js';
 import cityRoutes from './routes/city.routes.js';
 import statusRoutes from './routes/status.routes.js';
+import addressRoutes from './routes/address.routes.js';
 
 
 const __filename = fileURLToPath(import.meta.url);
@@ -41,6 +42,7 @@ app.use('/api/tracking', trackingRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/cities', cityRoutes);
 app.use('/api/status-catalog', statusRoutes);
+app.use('/api/addresses', addressRoutes);
 
 (async () => {
   try {

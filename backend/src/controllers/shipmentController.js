@@ -1,12 +1,8 @@
 // RUTA: backend/src/controllers/shipmentController.js
-import { Quote, Shipment, Package, TrackingEvent } from "../models/index.js";
+import { Quote, Shipment, Package, TrackingEvent, City, User, Address } from "../models/index.js";
 import { generateLabel } from "../utils/label.js";
 import { generateTracking } from "../utils/generateTracking.js";
 
-/**
- * Genera un tracking único para SHIPMENT verificando en BD.
- * (mantenemos tracking en Shipment por compatibilidad con endpoints existentes)
- */
 async function generateUniqueShipmentTracking() {
   for (let i = 0; i < 5; i++) {
     const t = generateTracking();
@@ -15,10 +11,6 @@ async function generateUniqueShipmentTracking() {
   }
   return generateTracking();
 }
-
-/**
- * Genera un tracking único para cada PACKAGE verificando en BD.
- */
 async function generateUniquePackageTracking() {
   for (let i = 0; i < 5; i++) {
     const t = generateTracking();
@@ -28,42 +20,48 @@ async function generateUniquePackageTracking() {
   return generateTracking();
 }
 
-/**
- * Crea un envío (Shipment) con N paquetes (Package).
- * - Mantiene tracking a nivel Shipment (compatibilidad).
- * - Genera tracking individual por paquete + etiqueta PDF por paquete.
- * - Crea evento inicial ORDER_CREATED a nivel paquete y a nivel envío.
- *
- * Body esperado:
- * {
- *   quoteId: number,
- *   recipientName: string,
- *   recipientAddress: string,
- *   payAmount?: number,
- *   packages: [{ pesoKg, largoCm, anchoCm, altoCm, cantidad }]
- * }
- */
 export const createShipment = async (req, res, next) => {
   try {
     const {
       quoteId,
       recipientName,
       recipientAddress,
-      packages = [],
       payAmount = 0,
+      senderAddress, // opcional (si no viene, tomamos la default del usuario)
+      packages = [],
     } = req.body;
 
-    // 1) Validar cotización
     const quote = await Quote.findByPk(quoteId);
-    if (!quote) {
-      return res.status(400).json({ ok: false, error: "Cotización inválida" });
+    if (!quote) return res.status(400).json({ ok: false, error: "Cotización inválida" });
+
+    const [originCity, destCity] = await Promise.all([
+      City.findByPk(quote.originCityId),
+      City.findByPk(quote.destCityId),
+    ]);
+    if (!originCity || !destCity) {
+      return res.status(400).json({ ok: false, error: "Ciudades de la cotización no disponibles" });
     }
 
     if (!Array.isArray(packages) || packages.length === 0) {
       return res.status(400).json({ ok: false, error: "Debes incluir al menos un paquete" });
     }
 
-    // 2) Crear Shipment (tracking maestro conservado por compatibilidad)
+    // Remitente (usuario + default address si no se envía explícita)
+    const user = await User.findByPk(req.user.id);
+    const senderName = user?.nombre || "Usuario UVM";
+
+    let senderAddr = (senderAddress || "").trim();
+    if (!senderAddr) {
+      const def = await Address.findOne({ where: { userId: req.user.id, isDefault: true } });
+      if (def) {
+        senderAddr = [def.linea1, def.linea2, def.ciudad, def.estado, def.pais, def.postal]
+          .filter(Boolean).join(', ');
+      } else {
+        senderAddr = "Dirección no registrada";
+      }
+    }
+
+    // Crear Shipment (tracking maestro por compatibilidad)
     const shipmentTracking = await generateUniqueShipmentTracking();
     const shipment = await Shipment.create({
       tracking: shipmentTracking,
@@ -71,48 +69,64 @@ export const createShipment = async (req, res, next) => {
       recipientName: String(recipientName || "").trim(),
       recipientAddress: String(recipientAddress || "").trim(),
       declaredValueTotal: 0,
-      amountTotal: quote.precio,               // si usas multi-quote con total consolidado, envíalo en la Quote/DB
+      amountTotal: quote.precio,
       amountPaid: +payAmount || 0,
       status: "ORDER_CREATED",
     });
 
-    // 3) Crear paquetes con tracking individual + evento + etiqueta por paquete
+    // Crear paquetes físicos (uno por cada unidad)
+    const totalUnits = packages.reduce((acc, p) => acc + (Number(p.cantidad) || 1), 0);
+    let boxIndex = 0;
+
     const createdPackages = [];
     for (const p of packages) {
-      const pkgTracking = await generateUniquePackageTracking();
-      const pkg = await Package.create({
-        shipmentId: shipment.id,
-        tracking: pkgTracking,
-        status: "ORDER_CREATED",
-        pesoKg: +p.pesoKg,
-        largoCm: +p.largoCm,
-        anchoCm: +p.anchoCm,
-        altoCm: +p.altoCm,
-        cantidad: +p.cantidad || 1,
-      });
+      const cantidad = Number(p.cantidad) || 1;
+      const pesoUnit = +p.pesoKg;
+      const largo = +p.largoCm;
+      const ancho = +p.anchoCm;
+      const alto  = +p.altoCm;
 
-      // Evento inicial por paquete
-      await TrackingEvent.create({
-        shipmentId: shipment.id,
-        packageId: pkg.id,
-        status: "ORDER_CREATED",
-        note: "Orden de envío generada",
-        actorUserId: req.user.id,
-      });
+      for (let i = 0; i < cantidad; i++) {
+        boxIndex += 1;
+        const pkgTracking = await generateUniquePackageTracking();
 
-      // Etiqueta por paquete
-      const pesoTotalPkg = Number(p.pesoKg || 0) * Number(p.cantidad || 1);
-      await generateLabel({
-        tracking: pkgTracking,
-        from: "UVM Express - Centro Logístico",
-        to: `${shipment.recipientName} — ${shipment.recipientAddress}`,
-        pesoKg: pesoTotalPkg.toFixed(2),
-      });
+        const pkg = await Package.create({
+          shipmentId: shipment.id,
+          tracking: pkgTracking,
+          status: "ORDER_CREATED",
+          pesoKg: pesoUnit,
+          largoCm: largo,
+          anchoCm: ancho,
+          altoCm: alto,
+          cantidad: 1,
+        });
 
-      createdPackages.push({ id: pkg.id, tracking: pkgTracking });
+        await TrackingEvent.create({
+          shipmentId: shipment.id,
+          packageId: pkg.id,
+          status: "ORDER_CREATED",
+          note: "Orden de envío generada",
+          actorUserId: req.user.id,
+        });
+
+        await generateLabel({
+          tracking: pkgTracking,
+          fromName: senderName,
+          fromAddress: senderAddr,
+          originCenter: `UVM Express - Centro Logístico ${String(originCity.nombre || '').toUpperCase()}${originCity.estado ? `, ${String(originCity.estado).toUpperCase()}` : ''}${originCity.pais ? `, ${String(originCity.pais).toUpperCase()}` : ''}.`,
+          toName: shipment.recipientName,
+          toAddress: shipment.recipientAddress,
+          toCityStateCountry: `${destCity.nombre}${destCity.estado ? `, ${destCity.estado}` : ''}${destCity.pais ? `, ${destCity.pais}` : ''}`,
+          pesoKg: Number(pesoUnit).toFixed(2),
+          dimensiones: { largoCm: largo, anchoCm: ancho, altoCm: alto },
+          boxIndex,
+          boxTotal: totalUnits,
+        });
+
+        createdPackages.push({ id: pkg.id, tracking: pkgTracking });
+      }
     }
 
-    // 4) Evento "general" del envío (opcional, útil para mensajes de grupo)
     await TrackingEvent.create({
       shipmentId: shipment.id,
       status: "ORDER_CREATED",
@@ -120,7 +134,6 @@ export const createShipment = async (req, res, next) => {
       actorUserId: req.user.id,
     });
 
-    // 5) Responder: tracking de Shipment (compat.), lista de packages y sus labels
     res.status(201).json({
       ok: true,
       shipment: {
@@ -132,8 +145,8 @@ export const createShipment = async (req, res, next) => {
         recipientName: shipment.recipientName,
         recipientAddress: shipment.recipientAddress,
       },
-      packages: createdPackages,                              // [{ id, tracking }]
-      labels: createdPackages.map(p => `/labels/${p.tracking}.pdf`) // 1 etiqueta por paquete
+      packages: createdPackages,
+      labels: createdPackages.map(p => `/labels/${p.tracking}.pdf`)
     });
   } catch (e) {
     next(e);
