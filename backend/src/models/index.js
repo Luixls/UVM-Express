@@ -33,6 +33,10 @@ Package.belongsTo(Shipment, { foreignKey: 'shipmentId' });
 Shipment.hasMany(TrackingEvent, { foreignKey: 'shipmentId' });
 TrackingEvent.belongsTo(Shipment, { foreignKey: 'shipmentId' });
 
+// NUEVO: relación opcional hacia el paquete
+Package.hasMany(TrackingEvent, { foreignKey: 'packageId' });
+TrackingEvent.belongsTo(Package, { foreignKey: 'packageId' });
+
 Shipment.hasMany(Payment, { foreignKey: 'shipmentId' });
 Payment.belongsTo(Shipment, { foreignKey: 'shipmentId' });
 

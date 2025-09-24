@@ -9,7 +9,7 @@ export default (sequelize) => {
     senderAddressId: { type: DataTypes.INTEGER.UNSIGNED, allowNull: true },
     recipientName: { type: DataTypes.STRING(100), allowNull: false },
     recipientAddress: { type: DataTypes.STRING(300), allowNull: false },
-
+    masterTracking: { type: DataTypes.STRING(32), allowNull: true, unique: true },
     status: { type: DataTypes.STRING(40), allowNull: false, defaultValue: 'ORDER_CREATED' },
     serviceType: { type: DataTypes.ENUM('standard', 'express'), defaultValue: 'standard' },
 

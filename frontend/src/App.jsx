@@ -1,16 +1,16 @@
 // RUTA: frontend/src/App.jsx
-import { Routes, Route } from "react-router-dom";
-import Header from "./components/Header.jsx";
-import ProtectedRoute from "./components/ProtectedRoute.jsx";
-import Home from "./pages/Home.jsx";
-import Login from "./pages/Login.jsx";
-import Register from "./pages/Register.jsx";
-import Rastreo from "./pages/Rastreo.jsx";
-import Dashboard from "./pages/Dashboard.jsx";
-import AdminPanel from "./pages/AdminPanel.jsx";
-import NotFound from "./pages/NotFound.jsx";
+import { Routes, Route } from 'react-router-dom'
+import Header from './components/Header.jsx'
+import ProtectedRoute from './components/ProtectedRoute.jsx'
+import Home from './pages/Home.jsx'
+import Login from './pages/Login.jsx'
+import Register from './pages/Register.jsx'
+import Rastreo from './pages/Rastreo.jsx'
+import Dashboard from './pages/Dashboard.jsx'
+import AdminPanel from './pages/AdminPanel.jsx'
+import RealizarEnvios from './pages/RealizarEnvios.jsx'  // 👈 NUEVO
 
-export default function App() {
+export default function App(){
   return (
     <div className="min-h-screen">
       <Header />
@@ -21,9 +21,17 @@ export default function App() {
           <Route path="/login" element={<Login />} />
           <Route path="/registro" element={<Register />} />
           <Route path="/rastreo" element={<Rastreo />} />
-          <Route path="*" element={<NotFound />} />
 
-          {/* Protegidas */}
+          {/* Privadas */}
+          <Route
+            path="/realizar-envios"
+            element={
+              <ProtectedRoute>
+                <RealizarEnvios />
+              </ProtectedRoute>
+            }
+          />
+
           <Route
             path="/panel"
             element={
@@ -35,7 +43,7 @@ export default function App() {
           <Route
             path="/admin"
             element={
-              <ProtectedRoute roles={["admin"]}>
+              <ProtectedRoute roles={['admin']}>
                 <AdminPanel />
               </ProtectedRoute>
             }
@@ -43,5 +51,5 @@ export default function App() {
         </Routes>
       </main>
     </div>
-  );
+  )
 }

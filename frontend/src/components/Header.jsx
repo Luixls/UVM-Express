@@ -21,14 +21,10 @@ export default function Header(){
           ) : (
             <>
               <Link to="/panel" className="hover:underline">Mi Panel</Link>
-              {user.rol === 'admin' && (
-                <Link to="/admin" className="hover:underline">Admin</Link>
-              )}
+              <Link to="/realizar-envios" className="hover:underline">Realizar Envíos</Link>
+              {user.rol === 'admin' && <Link to="/admin" className="hover:underline">Admin</Link>}
               <span className="text-sm opacity-70">Hola, {user.nombre}</span>
-              <button
-                onClick={()=>{ logout(); nav('/') }}
-                className="px-3 py-1 border rounded hover:bg-gray-50"
-              >
+              <button onClick={()=>{ logout(); nav('/') }} className="px-3 py-1 border rounded hover:bg-gray-50">
                 Salir
               </button>
             </>
