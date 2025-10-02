@@ -4,11 +4,21 @@ import { FaTruckMoving, FaShieldAlt, FaClock } from 'react-icons/fa'
 import bannerDriver from '../imgs/webp1.webp'
 import stackBoxes from '../imgs/webp2.webp'
 import handoff from '../imgs/webp3.webp'
+import UvmLogo from '../imgs/LOGO_UVM_EXPRESS.png'
 
-export default function Home(){
+export default function Home () {
   return (
     <section className="space-y-12">
-      {/* Hero */}
+      {/* Cuadro independiente del logo */}
+      <div className="rounded-2xl bg-white dark:bg-neutral-900 border border-neutral-200/70 dark:border-neutral-800 p-6 md:p-8 flex items-center justify-center">
+        <img
+          src={UvmLogo}
+          alt="UVM Express"
+          className="h-16 md:h-20 lg:h-24 drop-shadow-[0_6px_28px_rgba(16,185,129,0.35)] pointer-events-none select-none"
+        />
+      </div>
+
+      {/* Hero (sin logo) */}
       <div className="relative rounded-2xl overflow-hidden shadow-[0_10px_30px_rgba(0,0,0,0.08)]">
         <img
           src={bannerDriver}
