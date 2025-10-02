@@ -27,7 +27,7 @@ export const createShipment = async (req, res, next) => {
       recipientName,
       recipientAddress,
       payAmount = 0,
-      senderAddress, // opcional (si no viene, tomamos la default del usuario)
+      senderAddress, // opcional
       packages = [],
     } = req.body;
 
@@ -57,15 +57,20 @@ export const createShipment = async (req, res, next) => {
         senderAddr = [def.linea1, def.linea2, def.ciudad, def.estado, def.pais, def.postal]
           .filter(Boolean).join(', ');
       } else {
-        senderAddr = "Dirección no registrada";
+        // dejar vacío para que el PDF NO imprima "dirección no registrada"
+        senderAddr = "";
       }
     }
 
-    // Crear Shipment (tracking maestro por compatibilidad)
+    // Guardar quoteId en Shipment (clave para tracking) y, si tu modelo lo permite,
+    // también originCityId/destCityId para el fallback.
     const shipmentTracking = await generateUniqueShipmentTracking();
     const shipment = await Shipment.create({
       tracking: shipmentTracking,
       userId: req.user.id,
+      quoteId: quote.id,                  // 👈 importante para centros/ETA
+      originCityId: quote.originCityId,   // 👈 fallback si tu tabla tiene estas columnas
+      destCityId: quote.destCityId,       // 👈 fallback si tu tabla tiene estas columnas
       recipientName: String(recipientName || "").trim(),
       recipientAddress: String(recipientAddress || "").trim(),
       declaredValueTotal: 0,
@@ -74,7 +79,6 @@ export const createShipment = async (req, res, next) => {
       status: "ORDER_CREATED",
     });
 
-    // Crear paquetes físicos (uno por cada unidad)
     const totalUnits = packages.reduce((acc, p) => acc + (Number(p.cantidad) || 1), 0);
     let boxIndex = 0;
 
@@ -112,7 +116,7 @@ export const createShipment = async (req, res, next) => {
         await generateLabel({
           tracking: pkgTracking,
           fromName: senderName,
-          fromAddress: senderAddr,
+          fromAddress: senderAddr || undefined,
           originCenter: `UVM Express - Centro Logístico ${String(originCity.nombre || '').toUpperCase()}${originCity.estado ? `, ${String(originCity.estado).toUpperCase()}` : ''}${originCity.pais ? `, ${String(originCity.pais).toUpperCase()}` : ''}.`,
           toName: shipment.recipientName,
           toAddress: shipment.recipientAddress,

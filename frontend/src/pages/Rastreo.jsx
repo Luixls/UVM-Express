@@ -2,107 +2,203 @@
 import { useState } from 'react'
 import { api } from '../api/axios'
 
-const formatDateTime = (iso) => {
-  try { return new Date(iso).toLocaleString() } catch { return iso }
+// Mapa de estados a texto/estilos (ES)
+const STATUS = {
+  ORDER_CREATED: { es: 'Orden creada', cls: 'bg-gray-200 text-gray-900 dark:bg-white/10 dark:text-gray-100' },
+  IN_POSSESSION: { es: 'En posesión',  cls: 'bg-blue-200 text-blue-900 dark:bg-blue-900/40 dark:text-blue-200' },
+  IN_TRANSIT:    { es: 'En tránsito',   cls: 'bg-amber-200 text-amber-900 dark:bg-amber-900/40 dark:text-amber-200' },
+  DELIVERED:     { es: 'Entregado',     cls: 'bg-green-200 text-green-900 dark:bg-green-900/40 dark:text-green-200' },
+  EX_DELAY_WEATHER:    { es: 'Retraso por clima', cls: 'bg-red-200 text-red-900 dark:bg-red-900/40 dark:text-red-200' },
+  EX_MISSED_SCAN_24H:  { es: '24h sin escaneo',   cls: 'bg-red-200 text-red-900 dark:bg-red-900/40 dark:text-red-200' },
+  EX_LOST:             { es: 'Extravío',          cls: 'bg-red-200 text-red-900 dark:bg-red-900/40 dark:text-red-200' },
+  EX_CANCELLED_RETURN: { es: 'Cancelado/retorno', cls: 'bg-red-200 text-red-900 dark:bg-red-900/40 dark:text-red-200' },
+  EX_BAD_ADDRESS_RETRY:{ es: 'Dirección errónea', cls: 'bg-red-200 text-red-900 dark:bg-red-900/40 dark:text-red-200' },
+  EX_UNDELIVERABLE_3X: { es: 'No entregado (3x)', cls: 'bg-red-200 text-red-900 dark:bg-red-900/40 dark:text-red-200' },
 }
+const S = (code)=> STATUS[code]?.es || code
+const Badge = ({status}) =>
+  <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${STATUS[status]?.cls || STATUS.ORDER_CREATED.cls}`}>
+    {S(status)}
+  </span>
 
 export default function Rastreo(){
   const [tracking, setTracking] = useState('')
-  const [data, setData] = useState(null)
-  const [err, setErr] = useState('')
   const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+  const [data, setData] = useState(null)
 
-  const onSubmit = async (e)=>{
-    e.preventDefault()
-    setErr(''); setData(null); setLoading(true)
+  const fetchTracking = async (trk)=>{
+    setLoading(true); setError(''); setData(null)
     try{
-      const { data } = await api.get(`/tracking/${encodeURIComponent(tracking.trim())}`)
+      const { data } = await api.get(`/tracking/${encodeURIComponent(trk)}`)
       setData(data)
     }catch(e){
-      setErr(e?.response?.data?.error || 'Tracking no encontrado')
+      setError(e?.response?.data?.error || 'No se encontró información para ese tracking.')
     }finally{
       setLoading(false)
     }
   }
+  const buscar = (e)=>{
+    e?.preventDefault?.()
+    if(!tracking.trim()) return
+    fetchTracking(tracking.trim())
+  }
+  const openOther = (trk)=>{
+    setTracking(trk)
+    fetchTracking(trk)
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
+  const fmtDateTime = (d)=> new Date(d).toLocaleString('es-ES', { hour12:false })
+  const fmtEtaDate = (d)=> new Date(d).toLocaleDateString('es-ES', {
+    weekday:'long', year:'numeric', month:'long', day:'numeric'
+  })
 
   return (
-    <section className="max-w-3xl">
-      <h1 className="text-xl font-semibold mb-4">Rastrear envío</h1>
+    <section className="max-w-3xl mx-auto">
+      {/* Encabezado de búsqueda */}
+      <div className="rounded-2xl bg-neutral-900 text-neutral-50 border border-neutral-800 p-6 shadow-[0_10px_30px_rgba(0,0,0,0.2)]">
+        <h1 className="text-3xl font-extrabold">Rastrear Paquete</h1>
+        <p className="mt-1 text-neutral-300">Consulta el avance de tu envío y los eventos más recientes.</p>
+        <form onSubmit={buscar} className="mt-5 flex gap-2">
+          <input
+            className="flex-1 rounded-lg border border-neutral-700 bg-neutral-800 px-3 py-2 outline-none focus:ring-2 focus:ring-green-600"
+            placeholder="Ej: UVM1234567890Z77"
+            value={tracking}
+            onChange={(e)=>setTracking(e.target.value)}
+          />
+          <button className="rounded-lg px-4 py-2 font-medium text-white bg-green-700 hover:bg-green-800">Buscar</button>
+        </form>
+      </div>
 
-      <form onSubmit={onSubmit} className="flex gap-2 max-w-xl">
-        <input className="flex-1 border rounded px-3 py-2" placeholder="Tracking #"
-               value={tracking} onChange={e=>setTracking(e.target.value)} />
-        <button className="bg-black text-white px-4 py-2 rounded" disabled={loading || !tracking.trim()}>
-          {loading ? 'Buscando…' : 'Buscar'}
-        </button>
-      </form>
+      {loading && <div className="p-6 text-center">Buscando…</div>}
+      {error && <div className="p-6 text-center text-red-600 dark:text-red-400">{error}</div>}
 
-      {err && <p className="text-red-500 text-sm mt-3">{err}</p>}
+      {data?.ok && (
+        <div className="mt-6 space-y-6">
+          {/* Resumen */}
+          <div className="rounded-2xl bg-white text-neutral-900 dark:bg-neutral-900 dark:text-neutral-50 border border-neutral-200/70 dark:border-neutral-800 p-6">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <div className="text-sm text-gray-500">Tracking consultado</div>
+                <div className="text-2xl md:text-3xl font-extrabold">
+                  {data.queriedTracking || data.shipment.tracking}
+                </div>
+                <div className="mt-2"><Badge status={data.shipment.status} /></div>
 
-      {data && data.type === 'package' && (
-        <div className="mt-6 space-y-4">
-          <div className="p-4 border rounded">
-            <p><b>Paquete:</b> {data.package.tracking}</p>
-            <p><b>Estado:</b> {data.package.status}</p>
-            <p><b>Destinatario:</b> {data.shipment.recipientName} — {data.shipment.recipientAddress}</p>
+                {/* Meta maestro / cantidad de paquetes */}
+                {(data.queriedTracking && data.queriedTracking !== data.shipment.tracking) && (
+                  <div className="mt-2 text-sm text-neutral-400">
+                    Tracking maestro: <span className="font-medium text-neutral-300">{data.shipment.tracking}</span>
+                  </div>
+                )}
+                {typeof data.totalPackages === 'number' && (
+                  <div className="text-sm text-neutral-400">
+                    Total de {data.totalPackages} paquete{data.totalPackages===1?'':'s'}
+                  </div>
+                )}
+
+                {/* ETA visible como subtítulo */}
+                {data.etaDate && (
+                  <div className="mt-2 text-sm text-neutral-400">
+                    ETA {fmtEtaDate(data.etaDate)}
+                    <div className="text-xs opacity-80 mt-0.5">
+                      El ETA está sujeto a cambios; se calcula considerando tránsito, clima y condiciones estándar.
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Destinatario + ubicación (sin dirección) */}
+              <div className="text-right text-sm text-gray-600 dark:text-gray-300">
+                <div className="font-medium">Destinatario:</div>
+                <div>{data.shipment.recipientName || '—'}</div>
+                {data.recipientLocation && (
+                  <div className="opacity-80">
+                    {[
+                      data.recipientLocation.city,
+                      data.recipientLocation.state,
+                      data.recipientLocation.country
+                    ].filter(Boolean).join(', ')}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Centros logísticos */}
+            {(data.originCenter || data.destCenter) && (
+              <div className="mt-5 grid md:grid-cols-2 gap-4">
+                {data.originCenter && (
+                  <div className="rounded-xl border border-neutral-200 dark:border-neutral-800 p-3">
+                    <div className="text-xs uppercase tracking-wide text-neutral-500">Origen</div>
+                    <div className="mt-1 font-medium">{data.originCenter}</div>
+                  </div>
+                )}
+                {data.destCenter && (
+                  <div className="rounded-xl border border-neutral-200 dark:border-neutral-800 p-3">
+                    <div className="text-xs uppercase tracking-wide text-neutral-500">Centro de destino</div>
+                    <div className="mt-1 font-medium">{data.destCenter}</div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
-          {Array.isArray(data.packages) && (
-            <div className="p-4 border rounded">
-              <h2 className="font-semibold mb-2">Paquetes de esta encomienda</h2>
-              <ul className="list-disc ml-6">
-                {data.packages.map((p)=>(
-                  <li key={p.id} className={p.tracking === data.package.tracking ? 'font-semibold' : ''}>
-                    <span className="font-mono">{p.tracking}</span> — {p.status} {p.tracking === data.package.tracking ? '(consultado)' : ''}
-                  </li>
+          {/* Timeline – SOLO del paquete consultado si aplica */}
+          <div className="rounded-2xl bg-white text-neutral-900 dark:bg-neutral-900 dark:text-neutral-50 border border-neutral-200/70 dark:border-neutral-800 p-6">
+            <h3 className="text-lg font-semibold mb-4">Eventos</h3>
+            <ol className="relative border-s border-gray-200 dark:border-white/10 text-[15px]">
+              {data.events.map(ev=>(
+                <li key={ev.id} className="ms-4 pb-6">
+                  <div className="absolute -start-1.5 mt-1.5 h-3 w-3 rounded-full bg-green-700"></div>
+                  <div className="flex items-center justify-between">
+                    <Badge status={ev.status} />
+                    <div className="text-xs text-gray-500">{fmtDateTime(ev.timestamp)}</div>
+                  </div>
+                  <div className="mt-1">
+                    {ev.location && <div className="text-gray-700 dark:text-gray-300"><span className="font-medium">Ubicación:</span> {ev.location}</div>}
+                    {ev.note && <div className="text-gray-700 dark:text-gray-300"><span className="font-medium">Nota:</span> {ev.note}</div>}
+                  </div>
+                </li>
+              ))}
+              {/* Evento futuro ETA en gris */}
+              {data.etaDate && (
+                <li className="ms-4 pb-2 opacity-70">
+                  <div className="absolute -start-1.5 mt-1.5 h-3 w-3 rounded-full bg-neutral-400"></div>
+                  <div className="flex items-center justify-between">
+                    <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-neutral-200 text-neutral-800 dark:bg-white/10 dark:text-neutral-200">
+                      {data.etaText || 'ETA estimada'}
+                    </span>
+                    <div className="text-xs text-gray-500">{fmtEtaDate(data.etaDate)}</div>
+                  </div>
+                </li>
+              )}
+            </ol>
+          </div>
+
+          {/* Relacionados – clicables */}
+          {Array.isArray(data.groupEvents) && data.groupEvents.length > 0 && (
+            <div className="rounded-2xl bg-white text-neutral-900 dark:bg-neutral-900 dark:text-neutral-50 border border-neutral-200/70 dark:border-neutral-800 p-6">
+              <h3 className="text-lg font-semibold mb-4">Otros paquetes de la misma encomienda</h3>
+              <div className="grid sm:grid-cols-2 gap-3">
+                {data.groupEvents.map(g=>(
+                  <button
+                    key={g.tracking}
+                    onClick={()=>openOther(g.tracking)}
+                    className="text-left rounded-xl border p-3 dark:border-white/10 hover:bg-black/5 dark:hover:bg-white/5 transition"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="font-medium">{g.tracking}</div>
+                      <Badge status={g.currentStatus} />
+                    </div>
+                    <div className="text-xs text-gray-500 mt-1">
+                      Último evento: {S(g.lastEvent?.status) || '—'} — {g.lastEvent?.timestamp ? fmtDateTime(g.lastEvent.timestamp) : '—'}
+                    </div>
+                  </button>
                 ))}
-              </ul>
+              </div>
             </div>
           )}
-
-          <div>
-            <h2 className="font-semibold mb-2">Eventos del paquete</h2>
-            {data.events.length === 0 ? (
-              <p className="opacity-70">Aún no hay eventos.</p>
-            ) : (
-              <ul className="relative border-l pl-4">
-                {data.events.map(ev => (
-                  <li key={ev.id} className="mb-4">
-                    <div className="absolute -left-[7px] bg-black rounded-full h-3 w-3 mt-1.5"></div>
-                    <p className="text-sm opacity-70">{formatDateTime(ev.timestamp)} {ev.location ? `— ${ev.location}` : ''}</p>
-                    <p><b>{ev.status}</b> {ev.note ? `— ${ev.note}` : ''}</p>
-                    {ev.etaDate && <p className="text-sm opacity-70">ETA: {formatDateTime(ev.etaDate)}</p>}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        </div>
-      )}
-
-      {data && data.type === 'shipment' && (
-        <div className="mt-6 space-y-4">
-          <div className="p-4 border rounded">
-            <p><b>Tracking (envío):</b> {data.shipment.tracking}</p>
-            <p><b>Estado:</b> {data.shipment.status}</p>
-          </div>
-          <div>
-            <h2 className="font-semibold mb-2">Eventos</h2>
-            {data.events.length === 0 ? (
-              <p className="opacity-70">Aún no hay eventos.</p>
-            ) : (
-              <ul className="relative border-l pl-4">
-                {data.events.map(ev => (
-                  <li key={ev.id} className="mb-4">
-                    <div className="absolute -left-[7px] bg-black rounded-full h-3 w-3 mt-1.5"></div>
-                    <p className="text-sm opacity-70">{formatDateTime(ev.timestamp)} {ev.location ? `— ${ev.location}` : ''}</p>
-                    <p><b>{ev.status}</b> {ev.note ? `— ${ev.note}` : ''}</p>
-                    {ev.etaDate && <p className="text-sm opacity-70">ETA: {formatDateTime(ev.etaDate)}</p>}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
         </div>
       )}
     </section>

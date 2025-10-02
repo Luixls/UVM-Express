@@ -1,7 +1,32 @@
 // RUTA: backend/src/controllers/quoteController.js
+import { validationResult } from 'express-validator'
 import { City, Quote } from '../models/index.js'
 import { haversineKm } from '../utils/geo.js'
-import { PRICING, volumetricKg, estimateEtaDays, quotePrice } from '../utils/pricing.js'
+import { quotePrice } from '../utils/pricing.js'
+
+/**
+ * Obtiene distancia en km entre dos ciudades usando lat/lon del modelo City.
+ * Acepta columnas lat/lon o latitude/longitude por compatibilidad.
+ */
+async function getDistanceKm (originCityId, destCityId) {
+  const [o, d] = await Promise.all([
+    City.findByPk(originCityId),
+    City.findByPk(destCityId)
+  ])
+  if (!o || !d) return 0
+
+  const a = {
+    lat: Number(o.lat ?? o.latitude) || 0,
+    lon: Number(o.lon ?? o.longitude) || 0
+  }
+  const b = {
+    lat: Number(d.lat ?? d.latitude) || 0,
+    lon: Number(d.lon ?? d.longitude) || 0
+  }
+
+  if (!a.lat || !a.lon || !b.lat || !b.lon) return 0
+  return haversineKm(a.lat, a.lon, b.lat, b.lon)
+}
 
 /**
  * Cotización simple (un paquete)
@@ -9,10 +34,18 @@ import { PRICING, volumetricKg, estimateEtaDays, quotePrice } from '../utils/pri
  *  - originCityId, destCityId (int)
  *  - pesoKg (number), largoCm, anchoCm, altoCm (number)
  *  - cantidad (int, opcional)
- *  - declaredValueTotal (number, opcional)
+ *  - declaredValueTotal (number, opcional)  -> se pasa como declaredValue del paquete
  */
 export const createQuote = async (req, res, next) => {
   try {
+    // si usas validators en las rutas, respetamos eso
+    if (typeof validationResult === 'function') {
+      const errors = validationResult(req)
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ ok: false, error: 'Parámetros inválidos', details: errors.array() })
+      }
+    }
+
     const {
       originCityId, destCityId,
       pesoKg, largoCm, anchoCm, altoCm,
@@ -20,37 +53,43 @@ export const createQuote = async (req, res, next) => {
       declaredValueTotal = 0
     } = req.body
 
-    const [origin, dest] = await Promise.all([
-      City.findByPk(originCityId),
-      City.findByPk(destCityId)
-    ])
-    if (!origin || !dest) {
-      return res.status(400).json({ ok: false, error: 'Ciudades inválidas' })
-    }
+    const distanceKm = await getDistanceKm(originCityId, destCityId)
 
-    const distanceKm = haversineKm(+origin.lat, +origin.lon, +dest.lat, +dest.lon)
-    const { precio, pesoCobradoKg, subtotal, recargos } = quotePrice({
+    const pricing = quotePrice({
       distanceKm,
-      pesoRealKg: +pesoKg,
-      l: +largoCm, w: +anchoCm, h: +altoCm,
-      cantidad: +cantidad,
-      declaredValueTotal: +declaredValueTotal
+      packages: [{
+        pesoKg: Number(pesoKg) || 0,
+        largoCm: Number(largoCm) || 0,
+        anchoCm: Number(anchoCm) || 0,
+        altoCm: Number(altoCm) || 0,
+        cantidad: Math.max(1, parseInt(cantidad, 10) || 1),
+        declaredValue: Math.max(0, Number(declaredValueTotal) || 0)
+      }]
     })
 
-    const eta = estimateEtaDays(distanceKm)
-
-    const quote = await Quote.create({
-      userId: req.user?.id || null,
-      originCityId, destCityId,
-      distanceKm,
-      pesoCobradoKg,
-      precio,
-      breakdown: { subtotal, recargos, eta, type: 'single' },
-      expiresAt: new Date(Date.now() + 1000 * 60 * 60 * 24)
+    // Guardar la cotización para obtener quote.id
+    const q = await Quote.create({
+      userId: req.user?.id ?? null,
+      originCityId,
+      destCityId,
+      distanceKm: +pricing.breakdown.distanceKm,            // ✅ requerido por tu modelo
+      pesoCobradoKg: +pricing.breakdown.kgSum,              // ✅ requerido por tu modelo
+      precio: +pricing.total,                               // total calculado
+      // Guarda breakdown en el payload/breakdown (según tu esquema)
+      payload: { type: 'single', breakdown: pricing.breakdown },
+      breakdown: pricing.breakdown,                         // si tu modelo tiene este JSON
+      expiresAt: new Date(Date.now() + 1000 * 60 * 60 * 24) // 24h
     })
 
-    res.status(201).json({ ok: true, quote, eta })
-  } catch (e) { next(e) }
+    return res.status(201).json({
+      ok: true,
+      quote: { id: q.id, breakdown: pricing.breakdown },
+      total: pricing.total,
+      eta: pricing.breakdown.eta
+    })
+  } catch (e) {
+    next(e)
+  }
 }
 
 /**
@@ -58,104 +97,55 @@ export const createQuote = async (req, res, next) => {
  * Body:
  *  - originCityId, destCityId (int)
  *  - packages: [{ pesoKg, largoCm, anchoCm, altoCm, cantidad, declaredValue }]
- *
- * Reglas:
- *  - Se cobra una sola vez BASE_FEE + KM_RATE*distancia (base de envío)
- *  - Por paquete: (KG_RATE * pesoCobrado) + compLogístico
- *  - Del 2º paquete en adelante, el componente logístico tiene DESCUENTO
- *  - Combustible: FUEL_SURCHARGE sobre el subtotal "core"
- *  - Seguro: INSURANCE_RATE sobre el valor declarado por paquete
  */
 export const quoteMulti = async (req, res, next) => {
   try {
-    const { originCityId, destCityId, packages = [] } = req.body
-
-    const [origin, dest] = await Promise.all([
-      City.findByPk(originCityId),
-      City.findByPk(destCityId)
-    ])
-    if (!origin || !dest) {
-      return res.status(400).json({ ok: false, error: 'Ciudades inválidas' })
+    if (typeof validationResult === 'function') {
+      const errors = validationResult(req)
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ ok: false, error: 'Parámetros inválidos', details: errors.array() })
+      }
     }
+
+    const { originCityId, destCityId, packages = [] } = req.body
     if (!Array.isArray(packages) || packages.length === 0) {
       return res.status(400).json({ ok: false, error: 'Debes incluir al menos un paquete' })
     }
 
-    // Parámetros de “economía de escala”
-    const LOGISTIC_COMPONENT = 3.0                 // USD por paquete (referencial)
-    const DISCOUNT_AFTER_FIRST = 0.25              // 25% de descuento a partir del segundo paquete
+    const distanceKm = await getDistanceKm(originCityId, destCityId)
 
-    const distanceKm = haversineKm(+origin.lat, +origin.lon, +dest.lat, +dest.lon)
-    const baseDistCost = PRICING.BASE_FEE + PRICING.KM_RATE * distanceKm
+    // Normalizamos paquetes
+    const normalized = packages.map(p => ({
+      pesoKg: Number(p.pesoKg) || 0,
+      largoCm: parseInt(p.largoCm, 10) || 0,
+      anchoCm: parseInt(p.anchoCm, 10) || 0,
+      altoCm: parseInt(p.altoCm, 10) || 0,
+      cantidad: Math.max(1, parseInt(p.cantidad, 10) || 1),
+      declaredValue: Math.max(0, Number(p.declaredValue) || 0)
+    }))
 
-    let subtotalCore = baseDistCost           // base solo se aplica UNA vez
-    let segurosTotal = 0
-    let pesoCobradoKgTotal = 0
+    const pricing = quotePrice({ distanceKm, packages: normalized })
 
-    const breakdownPackages = packages.map((p, idx) => {
-      const cantidad = +p.cantidad || 1
-      const pesoUnit = +p.pesoKg
-      const l = +p.largoCm, w = +p.anchoCm, h = +p.altoCm
-      const declaredUnit = +(p.declaredValue || 0)
-
-      const volUnit = volumetricKg(l, w, h, PRICING.VOL_DIVISOR) // por unidad
-      const pesoCobradoUnit = Math.max(pesoUnit, volUnit)
-      const pesoCobrado = pesoCobradoUnit * cantidad
-
-      const costoPeso = PRICING.KG_RATE * pesoCobrado
-      let compLog = LOGISTIC_COMPONENT
-      if (idx >= 1) compLog = compLog * (1 - DISCOUNT_AFTER_FIRST)
-
-      const seguroPkg = declaredUnit * cantidad * PRICING.INSURANCE_RATE
-
-      // Sumarizadores
-      subtotalCore += (costoPeso + compLog)
-      segurosTotal += seguroPkg
-      pesoCobradoKgTotal += pesoCobrado
-
-      const totalPkg = +(costoPeso + compLog + seguroPkg).toFixed(2)
-
-      return {
-        index: idx + 1,
-        peso: +pesoCobrado.toFixed(2),
-        costoPeso: +costoPeso.toFixed(2),
-        compLog: +compLog.toFixed(2),
-        seguro: +seguroPkg.toFixed(2),
-        total: totalPkg
-      }
-    })
-
-    const recargoCombustible = +(subtotalCore * PRICING.FUEL_SURCHARGE).toFixed(2)
-    const total = +(subtotalCore + recargoCombustible + segurosTotal).toFixed(2)
-    const eta = estimateEtaDays(distanceKm)
-
-    // Guardar Quote (multi) para tener un ID que el frontend use al crear el envío
-    const quote = await Quote.create({
-      userId: req.user?.id || null,
-      originCityId, destCityId,
-      distanceKm,
-      pesoCobradoKg: +pesoCobradoKgTotal.toFixed(2),
-      precio: total,
-      breakdown: {
-        type: 'multi',
-        distanceKm: +distanceKm.toFixed(2),
-        baseDistCost: +baseDistCost.toFixed(2),
-        subtotalCore: +subtotalCore.toFixed(2),
-        recargoCombustible,
-        segurosTotal: +segurosTotal.toFixed(2),
-        packages: breakdownPackages,
-        eta
-      },
+    // Persistimos para obtener el id de quote y usarlo al crear el envío
+    const q = await Quote.create({
+      userId: req.user?.id ?? null,
+      originCityId,
+      destCityId,
+      distanceKm: +pricing.breakdown.distanceKm,   // ✅ requerido
+      pesoCobradoKg: +pricing.breakdown.kgSum,     // ✅ requerido
+      precio: +pricing.total,
+      payload: { type: 'multi', packages: normalized, breakdown: pricing.breakdown },
+      breakdown: pricing.breakdown,
       expiresAt: new Date(Date.now() + 1000 * 60 * 60 * 24)
     })
 
-    // Respuesta para el frontend unificado
-    res.status(201).json({
+    return res.status(201).json({
       ok: true,
-      eta,
-      total,
-      quote,                 // 👈 incluye quote.id
-      packages: breakdownPackages
+      quote: { id: q.id, breakdown: pricing.breakdown },
+      total: pricing.total,
+      eta: pricing.breakdown.eta
     })
-  } catch (e) { next(e) }
+  } catch (e) {
+    next(e)
+  }
 }
