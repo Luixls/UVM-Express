@@ -1,7 +1,10 @@
-// RUTA: frontend/src/pages/RealizarEnvios.jsx
 import { useEffect, useMemo, useState } from 'react'
 import { api } from '../api/axios'
 import { toast } from 'sonner'
+
+// Imágenes (galería de apoyo)
+import Webp4 from '../imgs/webp4.webp'
+import Webp5 from '../imgs/webp5.webp'
 
 // estilos utilitarios
 const inputCls =
@@ -361,6 +364,24 @@ export default function RealizarEnvios () {
           })()
         )}
       </aside>
+
+      {/* Galería inferior (ocupa todo el ancho del grid) */}
+      <div className="lg:col-span-3">
+        <div className="grid md:grid-cols-2 gap-4">
+          <img
+            src={Webp4}
+            alt="Etiquetado y preparación de paquetes"
+            loading="lazy"
+            className="w-full h-48 md:h-56 object-cover rounded-xl shadow"
+          />
+          <img
+            src={Webp5}
+            alt="Centro logístico UVM Express"
+            loading="lazy"
+            className="w-full h-48 md:h-56 object-cover rounded-xl shadow"
+          />
+        </div>
+      </div>
     </section>
   )
 }
