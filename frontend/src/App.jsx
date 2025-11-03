@@ -12,10 +12,13 @@ import AdminPanel from './pages/AdminPanel.jsx'
 import { useAuth } from './context/AuthContext.jsx'
 
 function Private({ children }){
-  const { user, loading } = useAuth() || {}
-  if (loading) return <div className="p-6 text-center">Cargando…</div>
-  if (!user) return <Navigate to="/login" replace />
-  return children
+  const { user } = useAuth() || {}
+  return user ? children : <Navigate to="/login" replace />
+}
+
+function AdminOnly({ children }){
+  const { user } = useAuth() || {}
+  return (user && user.rol==='admin') ? children : <Navigate to="/" replace />
 }
 
 export default function App(){
@@ -29,11 +32,9 @@ export default function App(){
           <Route path="/rastreo" element={<Rastreo />} />
           <Route path="/login" element={<Login />} />
           <Route path="/registro" element={<Register />} />
-
           <Route path="/realizar-envios" element={<Private><RealizarEnvios/></Private>} />
           <Route path="/panel" element={<Private><Dashboard/></Private>} />
-          <Route path="/admin" element={<Private><AdminPanel/></Private>} />
-
+          <Route path="/admin" element={<AdminOnly><AdminPanel/></AdminOnly>} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>

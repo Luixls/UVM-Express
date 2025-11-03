@@ -8,59 +8,40 @@ export default function Header(){
 
   return (
     <header className="sticky top-0 z-40 border-b border-green-600/20 bg-white/90 dark:bg-neutral-900/85 backdrop-blur">
-      <div className="mx-auto max-w-7xl px-4 md:px-6 lg:px-8 h-16 md:h-18 flex items-center justify-between">
+      <div className="mx-auto max-w-7xl px-4 md:px-6 lg:px-8 h-16 flex items-center justify-between">
         <Link to="/" className="flex items-center gap-2">
-          <img
-            src={UvmLogo}
-            alt="UVM Express"
-            className="h-8 md:h-9 w-auto drop-shadow-[0_2px_10px_rgba(16,185,129,0.35)]"
-          />
+          <img src={UvmLogo} alt="UVM Express" className="h-9 w-auto drop-shadow-[0_2px_10px_rgba(16,185,129,0.35)]" />
           <span className="sr-only">UVM Express</span>
         </Link>
 
         <nav className="hidden sm:flex items-center gap-6 text-sm">
-          <NavLink
-            to="/servicios"
-            className={({isActive}) =>
-              `hover:text-green-700 dark:hover:text-green-400 ${
-                isActive ? 'text-green-700 dark:text-green-400' : 'text-neutral-700 dark:text-neutral-300'
-              }`
-            }
-          >
+          <NavLink to="/servicios" className={({isActive}) =>
+            `hover:text-green-700 dark:hover:text-green-400 ${isActive ? 'text-green-700 dark:text-green-400' : 'text-neutral-700 dark:text-neutral-300'}`}>
             Servicios
           </NavLink>
-          <NavLink
-            to="/rastreo"
-            className={({isActive}) =>
-              `hover:text-green-700 dark:hover:text-green-400 ${
-                isActive ? 'text-green-700 dark:text-green-400' : 'text-neutral-700 dark:text-neutral-300'
-              }`
-            }
-          >
+          <NavLink to="/rastreo" className={({isActive}) =>
+            `hover:text-green-700 dark:hover:text-green-400 ${isActive ? 'text-green-700 dark:text-green-400' : 'text-neutral-700 dark:text-neutral-300'}`}>
             Rastrear
           </NavLink>
-          <NavLink
-            to="/realizar-envios"
-            className={({isActive}) =>
-              `hover:text-green-700 dark:hover:text-green-400 ${
-                isActive ? 'text-green-700 dark:text-green-400' : 'text-neutral-700 dark:text-neutral-300'
-              }`
-            }
-          >
+          <NavLink to="/realizar-envios" className={({isActive}) =>
+            `hover:text-green-700 dark:hover:text-green-400 ${isActive ? 'text-green-700 dark:text-green-400' : 'text-neutral-700 dark:text-neutral-300'}`}>
             Realizar Envíos
           </NavLink>
 
+          {/* Enlaces de paneles según sesión */}
           {user && (
-            <NavLink
-              to="/panel"
-              className={({isActive}) =>
-                `hover:text-green-700 dark:hover:text-green-400 ${
-                  isActive ? 'text-green-700 dark:text-green-400' : 'text-neutral-700 dark:text-neutral-300'
-                }`
-              }
-            >
-              Mi Panel
-            </NavLink>
+            <>
+              <NavLink to="/panel" className={({isActive}) =>
+                `hover:text-green-700 dark:hover:text-green-400 ${isActive ? 'text-green-700 dark:text-green-400' : 'text-neutral-700 dark:text-neutral-300'}`}>
+                Mi Panel
+              </NavLink>
+              {user.rol === 'admin' && (
+                <NavLink to="/admin" className={({isActive}) =>
+                  `hover:text-green-700 dark:hover:text-green-400 ${isActive ? 'text-green-700 dark:text-green-400' : 'text-neutral-700 dark:text-neutral-300'}`}>
+                  Panel Admin
+                </NavLink>
+              )}
+            </>
           )}
         </nav>
 
@@ -73,7 +54,6 @@ export default function Header(){
               <button
                 onClick={logout}
                 className="text-sm rounded-lg px-3 py-1.5 border border-green-600/30 text-green-800 dark:text-green-300 hover:bg-green-50 dark:hover:bg-green-900/20"
-                title="Cerrar sesión"
               >
                 Salir
               </button>

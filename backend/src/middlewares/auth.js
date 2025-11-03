@@ -18,3 +18,10 @@ export const requireAuth = async (req, res, next) => {
     next({ status: 401, message: 'Token inválido o expirado' });
   }
 };
+
+export const requireAdmin = (req, _res, next) => {
+  if (req?.user?.rol !== 'admin') {
+    return next({ status: 403, message: 'Requiere rol admin' });
+  }
+  next();
+};
