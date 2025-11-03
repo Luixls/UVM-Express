@@ -25,20 +25,12 @@ function buildCenterText (city) {
   return `UVM EXPRESS - CENTRO LOGÍSTICO ${String(city.nombre || '').toUpperCase()}${city.estado ? `, ${String(city.estado).toUpperCase()}` : ''}${city.pais ? `, ${String(city.pais).toUpperCase()}` : ''}.`
 }
 
-/**
- * Intenta recuperar una Quote asociada al shipment:
- * 1) Por shipment.quoteId si existe.
- * 2) Fallback sencillo: Quote del MISMO usuario +/- 24h del createdAt del shipment
- *    (la más reciente dentro de la ventana).
- */
 async function resolveQuoteForShipment (shipment) {
   if (shipment.quoteId) {
     const q = await Quote.findByPk(shipment.quoteId)
     if (q) return q
   }
 
-  // Fallback “simple” sin migraciones:
-  // buscamos quotes del mismo usuario en una ventana de 24h alrededor del shipment
   if (!shipment.userId || !shipment.createdAt) return null
 
   const before = new Date(shipment.createdAt)
@@ -49,9 +41,7 @@ async function resolveQuoteForShipment (shipment) {
   const q = await Quote.findOne({
     where: {
       userId: shipment.userId,
-      createdAt: {
-        [Op.between]: [before, after]
-      }
+      createdAt: { [Op.between]: [before, after] }
     },
     order: [['createdAt', 'DESC']]
   })
@@ -61,36 +51,42 @@ async function resolveQuoteForShipment (shipment) {
 /**
  * GET /api/tracking/:tracking
  * Acepta tracking de Shipment o de Package.
- * Devuelve:
- * { ok, queriedTracking, shipment, totalPackages, events, groupEvents,
- *   originCenter?, destCenter?, recipientLocation?, etaText?, etaDate? }
- * - Si el tracking es de paquete, 'events' incluye SOLO eventos de ese paquete.
+ * Cambios claves:
+ *  - Primero intentamos como tracking de **paquete**. Si existe, filtramos por packageId.
+ *  - Si no es paquete, probamos como tracking de **envío**. En ese caso, devolvemos SOLO
+ *    eventos de envío (packageId = null), para no mezclar eventos de todos los paquetes.
  */
 export const getTracking = async (req, res, next) => {
   try {
     const code = String(req.params.tracking || '').trim()
     if (!code) return res.status(400).json({ ok: false, error: 'Tracking requerido' })
 
-    // ¿Es tracking de shipment?
-    let shipment = await Shipment.findOne({ where: { tracking: code } })
-    let pkg = null
-
-    // ¿o tracking de paquete?
-    if (!shipment) {
-      pkg = await Package.findOne({ where: { tracking: code } })
-      if (pkg) shipment = await Shipment.findByPk(pkg.shipmentId)
+    // 1) PRIORIZAR tracking de PAQUETE
+    let pkg = await Package.findOne({ where: { tracking: code } })
+    let shipment = null
+    if (pkg) {
+      shipment = await Shipment.findByPk(pkg.shipmentId)
+    } else {
+      // 2) Si no es paquete, probar como tracking de ENVÍO
+      shipment = await Shipment.findOne({ where: { tracking: code } })
+      if (!shipment) return res.status(404).json({ ok: false, error: 'No encontrado' })
     }
-    if (!shipment) return res.status(404).json({ ok: false, error: 'No encontrado' })
 
-    // Eventos (por paquete si aplica)
-    const eventsQuery = {
-      where: { shipmentId: shipment.id },
+    // 3) Eventos:
+    //    - Si estamos viendo un PACKAGE: eventos SOLO de ese packageId.
+    //    - Si estamos viendo un SHIPMENT (tracking de envío): SOLO eventos de envío (packageId = null)
+    const eventsWhere = { shipmentId: shipment.id }
+    if (pkg) {
+      eventsWhere.packageId = pkg.id
+    } else {
+      eventsWhere.packageId = null
+    }
+    const events = await TrackingEvent.findAll({
+      where: eventsWhere,
       order: [['timestamp', 'ASC'], ['createdAt', 'ASC']]
-    }
-    if (pkg) eventsQuery.where.packageId = pkg.id
-    const events = await TrackingEvent.findAll(eventsQuery)
+    })
 
-    // Otros paquetes del envío
+    // 4) Otros paquetes del envío (para el cuadro final)
     const packages = await Package.findAll({ where: { shipmentId: shipment.id } })
     const totalPackages = packages.length
     const groupEvents = await Promise.all(
@@ -107,7 +103,7 @@ export const getTracking = async (req, res, next) => {
       })
     )
 
-    // ===================== Centros / Ubicación / ETA ======================
+    // ============ Centros / Ubicación / ETA ============
     let originCenter = null
     let destCenter = null
     let recipientLocation = null
@@ -117,7 +113,6 @@ export const getTracking = async (req, res, next) => {
     let originCity = null
     let destCity = null
 
-    // 1) Intentar por quoteId (o fallback de 24h)
     const q = await resolveQuoteForShipment(shipment)
     if (q) {
       if (q.originCityId) originCity = await City.findByPk(q.originCityId)
@@ -125,15 +120,9 @@ export const getTracking = async (req, res, next) => {
       if (q.breakdown?.eta) etaText = q.breakdown.eta
     }
 
-    // 2) Si tu modelo de Shipment tiene las columnas, úsalas como refuerzo
-    if (!originCity && shipment.originCityId) {
-      originCity = await City.findByPk(shipment.originCityId)
-    }
-    if (!destCity && shipment.destCityId) {
-      destCity = await City.findByPk(shipment.destCityId)
-    }
+    if (!originCity && shipment.originCityId) originCity = await City.findByPk(shipment.originCityId)
+    if (!destCity && shipment.destCityId)   destCity   = await City.findByPk(shipment.destCityId)
 
-    // Armar textos/ubicaciones si logramos recuperar ciudades
     if (originCity) originCenter = buildCenterText(originCity)
     if (destCity) {
       destCenter = buildCenterText(destCity)
@@ -144,20 +133,21 @@ export const getTracking = async (req, res, next) => {
       }
     }
 
-    // 3) ETA: si aún no tenemos, calcular con Haversine + estimateEtaDays
-    if (!etaText && originCity && destCity && originCity.lat != null && originCity.lon != null && destCity.lat != null && destCity.lon != null) {
+    if (!etaText && originCity && destCity &&
+        originCity.lat != null && originCity.lon != null &&
+        destCity.lat != null && destCity.lon != null) {
       const distanceKm = haversineKm(+originCity.lat, +originCity.lon, +destCity.lat, +destCity.lon)
-      etaText = estimateEtaDays(distanceKm) // "x–y días hábiles"
+      etaText = estimateEtaDays(distanceKm)
     }
     if (etaText) {
-      const addDays = etaTextToDays(etaText)
-      if (addDays) {
+      const addDays = (etaTextToDays(etaText) || 0)
+      if (addDays > 0) {
         const dts = new Date()
         dts.setDate(dts.getDate() + addDays)
         etaDate = dts.toISOString()
       }
     }
-    // ======================================================================
+    // ================================================
 
     res.json({
       ok: true,

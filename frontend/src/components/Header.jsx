@@ -59,7 +59,7 @@ export default function Header(){
                 }`
               }
             >
-              Mi panel
+              Mi Panel
             </NavLink>
           )}
         </nav>

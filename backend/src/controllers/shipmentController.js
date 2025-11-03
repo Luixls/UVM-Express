@@ -57,20 +57,18 @@ export const createShipment = async (req, res, next) => {
         senderAddr = [def.linea1, def.linea2, def.ciudad, def.estado, def.pais, def.postal]
           .filter(Boolean).join(', ');
       } else {
-        // dejar vacío para que el PDF NO imprima "dirección no registrada"
         senderAddr = "";
       }
     }
 
-    // Guardar quoteId en Shipment (clave para tracking) y, si tu modelo lo permite,
-    // también originCityId/destCityId para el fallback.
-    const shipmentTracking = await generateUniqueShipmentTracking();
+    // Creamos el envío con un tracking temporal (lo sobrescribiremos con el del 1er paquete)
+    const provisionalTracking = await generateUniqueShipmentTracking();
     const shipment = await Shipment.create({
-      tracking: shipmentTracking,
+      tracking: provisionalTracking,
       userId: req.user.id,
-      quoteId: quote.id,                  // 👈 importante para centros/ETA
-      originCityId: quote.originCityId,   // 👈 fallback si tu tabla tiene estas columnas
-      destCityId: quote.destCityId,       // 👈 fallback si tu tabla tiene estas columnas
+      quoteId: quote.id,
+      originCityId: quote.originCityId,
+      destCityId: quote.destCityId,
       recipientName: String(recipientName || "").trim(),
       recipientAddress: String(recipientAddress || "").trim(),
       declaredValueTotal: 0,
@@ -83,6 +81,8 @@ export const createShipment = async (req, res, next) => {
     let boxIndex = 0;
 
     const createdPackages = [];
+    let firstPackageTracking = null;
+
     for (const p of packages) {
       const cantidad = Number(p.cantidad) || 1;
       const pesoUnit = +p.pesoKg;
@@ -104,6 +104,11 @@ export const createShipment = async (req, res, next) => {
           altoCm: alto,
           cantidad: 1,
         });
+
+        // Guardamos el tracking del primer paquete para convertirlo en "maestro"
+        if (!firstPackageTracking) {
+          firstPackageTracking = pkgTracking;
+        }
 
         await TrackingEvent.create({
           shipmentId: shipment.id,
@@ -131,12 +136,21 @@ export const createShipment = async (req, res, next) => {
       }
     }
 
+    // Evento a nivel envío (solo 1 vez)
     await TrackingEvent.create({
       shipmentId: shipment.id,
       status: "ORDER_CREATED",
       note: `Orden creada con ${createdPackages.length} paquete(s)`,
       actorUserId: req.user.id,
     });
+
+    // 🔧 Punto clave: el "tracking maestro" del envío pasa a SER el del 1er paquete
+    // Esto evita que exista un tracking “extra” (diferente) al consultar “otros paquetes…”
+    if (firstPackageTracking && shipment.tracking !== firstPackageTracking) {
+      shipment.tracking = firstPackageTracking;
+      shipment.masterTracking = firstPackageTracking; // opcional: reflejar también aquí
+      await shipment.save();
+    }
 
     res.status(201).json({
       ok: true,
