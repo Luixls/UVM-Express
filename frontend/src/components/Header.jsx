@@ -8,9 +8,7 @@ export default function Header(){
 
   return (
     <header className="sticky top-0 z-40 border-b border-green-600/20 bg-white/90 dark:bg-neutral-900/85 backdrop-blur">
-      {/* Barra superior con gradiente verde y mayor altura */}
       <div className="mx-auto max-w-7xl px-4 md:px-6 lg:px-8 h-16 md:h-18 flex items-center justify-between">
-        {/* Logo + marca */}
         <Link to="/" className="flex items-center gap-2">
           <img
             src={UvmLogo}
@@ -20,7 +18,6 @@ export default function Header(){
           <span className="sr-only">UVM Express</span>
         </Link>
 
-        {/* Navegación */}
         <nav className="hidden sm:flex items-center gap-6 text-sm">
           <NavLink
             to="/servicios"
@@ -52,9 +49,21 @@ export default function Header(){
           >
             Realizar Envíos
           </NavLink>
+
+          {user && (
+            <NavLink
+              to="/panel"
+              className={({isActive}) =>
+                `hover:text-green-700 dark:hover:text-green-400 ${
+                  isActive ? 'text-green-700 dark:text-green-400' : 'text-neutral-700 dark:text-neutral-300'
+                }`
+              }
+            >
+              Mi panel
+            </NavLink>
+          )}
         </nav>
 
-        {/* Acciones / sesión */}
         <div className="flex items-center gap-3">
           {user ? (
             <>
@@ -79,8 +88,6 @@ export default function Header(){
           )}
         </div>
       </div>
-
-      {/* Línea verde inferior sutil */}
       <div className="h-[3px] w-full bg-gradient-to-r from-green-600 via-emerald-500 to-green-600 opacity-70" />
     </header>
   )

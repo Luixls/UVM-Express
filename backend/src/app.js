@@ -16,6 +16,7 @@ import adminRoutes from './routes/admin.routes.js';
 import cityRoutes from './routes/city.routes.js';
 import statusRoutes from './routes/status.routes.js';
 import addressRoutes from './routes/address.routes.js';
+import meRoutes from './routes/me.routes.js';
 
 // Seeds (solo se ejecutan si SEED_ON_BOOT === 'true')
 import { seedAdmin } from './seed/admin.seed.js';
@@ -47,12 +48,18 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/cities', cityRoutes);
 app.use('/api/status-catalog', statusRoutes);
 app.use('/api/addresses', addressRoutes);
+app.use('/api/me', meRoutes);
 
-// Arranque + BD + (opcional) seeds
-(async () => {
+// ⬇ IIFE de arranque (sin force)
+;(async () => {
   try {
     await sequelize.authenticate();
-    await sequelize.sync({ alter: true }); // en prod, usa migraciones
+
+    // Desarrollo: ajusta esquema sin borrar datos.
+    await sequelize.sync({ alter: true });
+    // Producción: cuando todo esté estable, usa simplemente:
+    // await sequelize.sync();
+
     console.log('MySQL conectado correctamente.');
 
     if (process.env.SEED_ON_BOOT === 'true') {
@@ -60,7 +67,7 @@ app.use('/api/addresses', addressRoutes);
       try {
         await seedStatusCatalog(); // idempotente
         await seedCities();        // idempotente
-        await seedAdmin();         // idempotente (usa .env)
+        await seedAdmin();         // idempotente
         console.log('[app] Semillas completadas.');
       } catch (se) {
         console.warn('[app] Advertencia durante semillas:', se?.message || se);

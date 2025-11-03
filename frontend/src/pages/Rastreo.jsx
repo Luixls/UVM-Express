@@ -114,7 +114,7 @@ export default function Rastreo(){
                       {fmtEtaDate(data.etaDate)}
                     </span>
                     <div className="text-xs md:text-sm opacity-80 mt-1">
-                      El ETA está sujeto a cambios; se calcula considerando tránsito, clima y condiciones estándar.
+                      El ETA está sujeto a cambios; se calcula considerando tránsito, clima y más.
                     </div>
                   </div>
                 )}
